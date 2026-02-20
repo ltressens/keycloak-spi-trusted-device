@@ -1,7 +1,9 @@
 package nl.wouterh.keycloak.trusteddevice.util;
 
+import jakarta.ws.rs.core.Cookie;
+import jakarta.ws.rs.core.NewCookie;
 import jakarta.ws.rs.core.UriBuilder;
-import java.util.Set;
+import java.util.Map;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -10,14 +12,12 @@ import nl.wouterh.keycloak.trusteddevice.credential.TrustedDeviceCredentialProvi
 import nl.wouterh.keycloak.trusteddevice.credential.TrustedDeviceCredentialProviderFactory;
 import org.keycloak.TokenCategory;
 import org.keycloak.common.ClientConnection;
-import org.keycloak.common.util.ServerCookie;
 import org.keycloak.common.util.Time;
 import org.keycloak.credential.CredentialProvider;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.representations.JsonWebToken;
-import org.keycloak.services.util.CookieHelper;
 
 @Getter
 @Setter
@@ -39,31 +39,34 @@ public class TrustedDeviceToken extends JsonWebToken {
     ClientConnection connection = session.getContext().getConnection();
     boolean secure = realm.getSslRequired().isRequired(connection);
 
-    ServerCookie.SameSiteAttributeValue sameSiteValue =
-        secure ? ServerCookie.SameSiteAttributeValue.NONE : null;
-    CookieHelper.addCookie(
-        COOKIE_NAME,
-        value,
-        path,
-        null,
-        null,
-        maxAge,
-        secure,
-        true,
-        sameSiteValue,
-        session
-    );
+    NewCookie.SameSite sameSiteValue = secure ? NewCookie.SameSite.NONE : null;
+
+    NewCookie.Builder builder = new NewCookie.Builder(COOKIE_NAME)
+        .value(value)
+        .path(path)
+        .maxAge(maxAge)
+        .secure(secure)
+        .httpOnly(true);
+
+    if (sameSiteValue != null) {
+      builder.sameSite(sameSiteValue);
+    }
+
+    session.getContext().getHttpResponse().setCookieIfAbsent(builder.build());
   }
 
   public static TrustedDeviceToken getCookie(KeycloakSession session) {
-    Set<String> cookieValues = CookieHelper.getCookieValue(session, COOKIE_NAME);
-    long time = Time.currentTime();
+    Map<String, Cookie> cookies = session.getContext().getHttpRequest().getHttpHeaders().getCookies();
+    Cookie cookie = cookies.get(COOKIE_NAME);
+    if (cookie == null) {
+      return null;
+    }
 
-    for (String cookieValue : cookieValues) {
-      TrustedDeviceToken decoded = session.tokens().decode(cookieValue, TrustedDeviceToken.class);
-      if (decoded != null && (decoded.getExp() == null || decoded.getExp() > time)) {
-        return decoded;
-      }
+    long time = Time.currentTime();
+    String cookieValue = cookie.getValue();
+    TrustedDeviceToken decoded = session.tokens().decode(cookieValue, TrustedDeviceToken.class);
+    if (decoded != null && (decoded.getExp() == null || decoded.getExp() > time)) {
+      return decoded;
     }
 
     return null;
