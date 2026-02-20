@@ -37,7 +37,7 @@ public class TrustedDeviceCredentialModel extends CredentialModel {
     credentialModel.setType(TYPE_TWOFACTOR);
 
     credentialModel.fillCredentialModelFields();
-    credentialModel.setUserLabel(userLabel);
+    credentialModel.setUserLabel(userLabel + " (" + java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS) + ")");
 
     return credentialModel;
   }
